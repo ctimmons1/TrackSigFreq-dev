@@ -65,31 +65,16 @@ fixIndexing <- function(traj, activeInSample) {
   # corrects trajectory format when no changepoints are identified
   # plotting functions expect trajectory components to be at certain indices
   changepoints <- list(changepoints = NULL)
-  j <- 1
   new_traj <- list()
   for (i in 1:length(traj)) {
-    if (typeof(traj[[i]])=='double') {
-      if (!is.null(dim(traj[[i]])[1])) {
-        if (as.numeric(dim(traj[[i]])[1])==length(activeInSample)) {
-          if (typeof(traj[[i+1]])=='character') {
-            new_traj <- c(new_traj, traj[i], changepoints)
-            j <- j + 3
-          }
-          else {
-            new_traj <- c(new_traj, traj[i])
-          }
-        }
-        else {
-          new_traj <- c(new_traj, traj[i])
-        }
+    if ((typeof(traj[[i]])=='double') && (!is.null(dim(traj[[i]])[1])) &&
+        (as.numeric(dim(traj[[i]])[1])==length(activeInSample)) && (typeof(traj[[i+1]]) == 'character')) {
+      new_traj <- c(new_traj, traj[i], changepoints)
       }
-      else {
-        new_traj <- c(new_traj, traj[i])
-      }
-    }
     else {
       new_traj <- c(new_traj, traj[i])
     }
   }
   return (new_traj)
 }
+

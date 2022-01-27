@@ -1,4 +1,8 @@
-# Bootstrap shuffles
+# Shuffle bootstrapping functions
+# binbyChromShuffle() -- separate counts data for the whole genome into a list of dataframes,
+# each representing the counts for a single chromosome. Bin mutations on each chromosome.
+# bootstrapShuffle() -- arrange chromosomes in random order and perform a single TrackSig run.
+# trackShuffle() -- allows for multiple runs and parallelization
 
 binByChromShuffle <- function(master, binSize) {
   # Bin mutations on each chromosome separately, excluding Y chromosome
@@ -68,6 +72,64 @@ bootstrapShuffle <- function(master, binSize, activeInSample, i) {
   return (traj)
 }
 
+## \code{trackShuffle} Perform shuffle bootstrapping.
+##
+## @param master dataframe of mutation counts for your sample/s
+## @param activeInSample list of active signatures to fit
+## @param binSize desired number of mutations per bin
+## @param nSamples number of bootstrap samples to take
+## @param parallelize logical indicating whether functions should be run in parallel
+##
+## @examples
+## breastcancer_results <- trackShuffle(pooled_breastcancer_counts,
+##                                        breastcancer_sigs, 200, 20, TRUE)
+##
+## @name trackShuffle
+
+trackShuffle <- function(master, activeInSample, binSize, nSamples, parallelize) {
+  # initialize variables and functions
+  j <- NULL
+  `%dopar%` <- foreach::`%dopar%` # define parallelization functions
+  `%do%` <- foreach::`%do%`
+  trajectories <- c() # empty list of trajectories to add each bootstrap sample to
+
+  if (parallelize == TRUE) {
+    # intialize cluster
+    cores <- base::floor(0.9*(parallel::detectCores()))
+    myCluster <- parallel::makeCluster(cores, type="FORK")
+    doParallel::registerDoParallel(myCluster)
+  }
+
+  # bootstrapping = True
+  if (nSamples > 0) {
+    # parallelize = True
+    if (parallelize == TRUE) {
+      traj <- foreach::foreach(j = c(1:nSamples), .combine = 'c') %dopar% bootstrapShuffle(master, binSize, activeInSample, j)
+    }
+    # parallelize = False
+    else {
+      traj <- foreach::foreach(j = c(1:nSamples), .combine = 'c') %do% bootstrapShuffle(master, binSize, activeInSample, j)
+    }
+  }
+
+
+  # bootstrapping = False
+  else {
+    traj <- bootstrapShuffle(master, binSize, activeInSample, 1)
+  }
+
+  if (parallelize==TRUE) {
+    parallel::stopCluster(myCluster)
+  }
+
+  return (traj)
+}
+
+# Mutation bootstrapping functions
+# bootstrapSample() -- samples mutations with replacement and returns resampled counts dataframe
+# bootstrapChromosomes() -- runs TrackSig on resampled data at the chromosomal level.
+# bootstrapGenome() -- runs TrackSig on resampled data at the genome level.
+
 ## \code{bootstrapSample} Sample with replacement from the mutations in each bin
 ##
 ## @param master binned dataframe of mutation counts
@@ -123,7 +185,7 @@ bootstrapChromosomes <- function (master, i, activeInSample, binSize) {
     counts <- binningNmut(temp, binSize)
     bootstrap_counts <- bootstrapSample(counts)
 
-    traj <- TrackSig(bootstrap_counts, binSize = binSize, activeInSample = activeInSample, sampleID = "test")
+    traj <- TrackSig(bootstrap_counts, binSize = binSize, activeInSample = activeInSample, sampleID = "sample")
 
   }
   return (traj)

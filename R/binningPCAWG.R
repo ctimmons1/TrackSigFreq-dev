@@ -1,33 +1,59 @@
 #' Format file of mutation counts
 #'
 #' @description
-#' \code{readFormat} takes in a csv of mutation counts and returns a data frame in a
-#' format compatible with TrackSig().
+#' \code{readFormat} takes in a csv of mutation counts and
+#' returns a data frame in a
+#' format compatible with TrackSig(). Expects following columns: seqnames (chromosome), # nolint
+#' start (start position on chromosome), end (end position on chromosome), width (end - start),
+#' 96 columns
+#' representing counts for each of 96 mutation types. Accepts following columns: strand.
 #'
 #' @param path file path to csv of mutation counts
 #'
-#' @return dataframe of mutation counts
+#' @return DataFrame of mutation counts
 #' @export
 
 readFormat <- function(path) {
-  seqnames <- strand <- NULL
+  SEQNAMES <- STRAND <- NULL 
   # read in dataframe of file IDs with corresponding cancer types
 
 
   # initialize counts dataframe
-  master <- utils::read.csv(path, header=T, sep=',')
+  master <- utils::read.csv(path, header = T, sep = ",")
+
+  # check that required columns are present
+  colnames(master) <- toupper(colnames(master))
+  assertthat::assert_that(("SEQNAMES" %in% colnames(master)) == TRUE,
+  msg = "Missing column `seqnames`\n")
+  assertthat::assert_that(("START" %in% colnames(master)) == TRUE,
+  msg = "Missing column `start`\n")
+  assertthat::assert_that(("END" %in% colnames(master)) == TRUE,
+  msg = "Missing column `end`\n")
+  assertthat::assert_that(("WIDTH" %in% colnames(master)) == TRUE,
+  msg = "Missing column `width`\n")
+  assertthat::assert_that((FALSE %in% (rownames(TrackSig::cosmicV3) %in% colnames(master))) == FALSE,
+                          msg = "Missing mutation types.\n")
+
+  if ("STRAND" %in% colnames(master)) {
+    master <- master %>%
+      dplyr::select(-STRAND)
+  }
+
+  master <- master[,c('SEQNAMES', 'START', 'END', 'WIDTH', rownames(TrackSig::cosmicV3))]
+
 
   # make data type consistent in seqnames column
   # split seqnames column into start chrom and end chrom
   # remove unnecessary variables
   master <- master %>%
-    dplyr::mutate(seqnames = dplyr::case_when(seqnames == "X" ~ 23,
-                                              seqnames == "Y" ~ 24,
-                                              TRUE ~ as.numeric(seqnames)),
-                  start_chrom = seqnames,
-                  end_chrom = seqnames) %>%
-    dplyr::select(-seqnames, -strand) %>%
+    dplyr::mutate(SEQNAMES = dplyr::case_when(SEQNAMES == "X" ~ 23,
+                                              SEQNAMES == "Y" ~ 24,
+                                              TRUE ~ as.numeric(SEQNAMES)),
+                  START_CHROM = SEQNAMES,
+                  END_CHROM = SEQNAMES) %>%
+    dplyr::select(-SEQNAMES) %>%
     base::subset(select = c(100,1,101,2:99))
+  colnames(master)[1:5] <- base::tolower(colnames(master)[1:5])
 
   # save output into csv and return dataframe
   return (master)
@@ -56,7 +82,7 @@ poolSamples <- function(archivePath, typesPath, cancerType) {
   types <- types[2:nrow(types), ]
 
   # list of sample filenames for desired cancer type
-  get_files <- c(types$guid[types$type == cancerType])
+  get_files <- c(types$guid[cancerType %in% types$type])
 
   # initialize counts dataframe
   master <- utils::read.csv(as.character(paste(archivePath, "/", get_files[1], ".MBcounts.csv", sep = "")),
@@ -86,6 +112,7 @@ poolSamples <- function(archivePath, typesPath, cancerType) {
   utils::write.csv(master, file = paste(cancerType, "_pooled.csv", sep=""))
   return (master)
 }
+# TODO: Optimize binning functions, rename, try to combine
 
 ## \code{getBinNumber} Identify which bin each Mb region of the genome belongs to,
 ## depending on the desired bin size.
@@ -96,9 +123,9 @@ poolSamples <- function(archivePath, typesPath, cancerType) {
 ## @name getBinNumber
 
 getBinNumber <- function(master, binSize) {
-  counts <- data.frame()
   start_chrom <- NULL
-
+  # initialize empty dataframe
+  counts <- data.frame()
   for (i in c(1:23)) {
     # find mutation counts in each row
     # bin sex chromosomes together
@@ -113,7 +140,7 @@ getBinNumber <- function(master, binSize) {
       bin <- 1
       sums <- 0
       # add up counts in each row until desired bin size is reached
-      for (i in 1:nrow(master_subset)) {
+      for (i in 1:nrow(master_subset)) { # nolint
         sums <- sums + master_subset$rowsum[i]
         master_subset$bin[i] <- bin
         if (sums >= binSize) {
@@ -149,20 +176,24 @@ getBinNumber <- function(master, binSize) {
   # define bins in relation to the whole genome
   for (i in c(2:23)) {
     if (i == 23) {
-      counts$bin[counts$start_chrom>=i] <- counts$bin[counts$start_chrom>=i] + max(counts$bin[counts$start_chrom==i-1])
+      counts$bin[counts$start_chrom>=i] <- counts$bin[counts$start_chrom>=i] + 
+      max(counts$bin[counts$start_chrom==i-1])
     }
     else {
-      counts$bin[counts$start_chrom==i] <- counts$bin[counts$start_chrom==i] + max(counts$bin[counts$start_chrom==i-1])
+      counts$bin[counts$start_chrom==i] <- counts$bin[counts$start_chrom==i] + 
+      max(counts$bin[counts$start_chrom==i-1])
     }
   }
 
   return (counts)
 }
 
-## \code{binningNmut} Group mutation counts dataframe into bins with specified # of mutations per bin.
+## \code{binningNmut} Group mutation counts dataframe into bins with 
+## specified # of mutations per bin.
 ##
 ## @param master dataframe of mutation counts in your sample/s
-## @param binSize desired number of mutations per bin (should be >= 100 for optimal results)
+## @param binSize desired number of mutations per bin 
+## (should be >= 100 for optimal results)
 ##
 ## @examples
 ## binCounts <- binningNmut(pooled_breastcancer_counts,
@@ -180,8 +211,9 @@ binningNmut <- function(master, binSize) {
                   bin = 1) %>%
     base::subset(select = c(1:5,102,103,6:101))
 
-  # assign bin numbers to rows--bin number changes when the sum of all mutations in
-  # the previous rows in that bin reaches or exceeds the desired bin size
+  # assign bin numbers to rows--bin number changes when the sum of all 
+  # mutations in the previous rows in that bin reaches or exceeds the 
+  # desired bin size.
   bin <- 1
   sums <- 0
 
@@ -256,3 +288,8 @@ binByChrom <- function(master, binSize) {
   counts$bin <- c(1:nrow(counts))
   return (counts)
 }
+
+
+
+
+

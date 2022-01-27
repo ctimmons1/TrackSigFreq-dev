@@ -73,9 +73,9 @@ assignChromosomeBounds <- function (traj, chr_level) {
         }
       }
     }
-    if (length(change_bins) != 24) {
-      change_bins <- c(change_bins, binData$bin[nrow(binData)])
-    }
+   if (length(change_bins) != 24) {
+     change_bins <- c(change_bins, binData$bin[nrow(binData)])
+   }
   }
 
   else {
@@ -232,8 +232,6 @@ plotSpaceTrajectory <- function(trajectory, show=TRUE, chr_level, cutoff) {
 
   else {
     change_bins <- assignChromosomeBounds(trajectory, chr_level)
-    chr_breaks <- change_bins
-    chr_labels <- as.character(c(1:22, "X", "Y"))
 
     # assign centromere locations to bins
     crPos <- assignCentromereBounds(trajectory, chr_level)
@@ -246,9 +244,14 @@ plotSpaceTrajectory <- function(trajectory, show=TRUE, chr_level, cutoff) {
     avg_df <- as.data.frame(maps[(length(maps)-2):length(maps)])
     colnames(avg_df) <- c('Signatures', "xBin", "exposure")
 
+    chr_labels <- as.character(c(1:22, "X", "Y"))
+    #chr_labels <- unique(trajectory[['binData']]$start_chrom)
+    chr_breaks <- change_bins
+
     g <- (  ggplot2::ggplot(data = avg_df)
             + ggplot2::aes(x = .data$xBin, y = .data$exposure * 100, group = .data$Signatures, color = .data$Signatures)
             + ggplot2::scale_x_continuous(breaks = sort(chr_breaks), labels = chr_labels)
+            + ggsci::scale_color_igv(palette = "default")
 
     )
 
@@ -264,8 +267,8 @@ plotSpaceTrajectory <- function(trajectory, show=TRUE, chr_level, cutoff) {
     g <- (   g
              + ggplot2::geom_point()
              + ggplot2::geom_line()
-             + ggplot2::geom_vline(xintercept = crPos[,1], col = 'lightblue', alpha=0.7)
-             + ggplot2::geom_vline(xintercept = crPos[,2], col = "lightblue", alpha=0.7)
+            + ggplot2::geom_vline(xintercept = crPos[,1], col = 'lightblue', alpha=0.7)
+            + ggplot2::geom_vline(xintercept = crPos[,2], col = "lightblue", alpha=0.7)
              + ggplot2::theme_bw()
              + ggplot2::theme(panel.grid.major.x = ggplot2::element_blank(),
                               panel.grid.minor.x = ggplot2::element_blank())
@@ -288,10 +291,10 @@ plotSpaceTrajectory <- function(trajectory, show=TRUE, chr_level, cutoff) {
 
     # add centromere locations
     for (i in 1:dim(crPos)[1]) {
-      g <- g + ggplot2::annotate("rect", xmax=crPos[i,2], xmin=crPos[i,1],
-                                 ymin=-Inf, ymax=Inf, alpha=0.3, fill = "lightblue")
+     g <- g + ggplot2::annotate("rect", xmax=crPos[i,2], xmin=crPos[i,1],
+                                ymin=-Inf, ymax=Inf, alpha=0.3, fill = "lightblue")
 
-    }
+   }
 
     if (nrow(cpPos) > 0) {
       # add changepoints to plot
@@ -304,4 +307,40 @@ plotSpaceTrajectory <- function(trajectory, show=TRUE, chr_level, cutoff) {
   }
 
   return(g)
+}
+
+# plot bin count distribution
+
+plotBinDistribution <- function(master, binSize, binStart, binEnd) {
+  binned_master <- getBinNumber(master, binSize)
+  binned_master$C_A <- rowSums(binned_master[,8:23])
+  binned_master$C_G <- rowSums(binned_master[,24:39])
+  binned_master$C_T <- rowSums(binned_master[,40:55])
+  binned_master$T_A <- rowSums(binned_master[,56:71])
+  binned_master$T_C <- rowSums(binned_master[,72:87])
+  binned_master$T_G <- rowSums(binned_master[,88:103])
+
+  binned_master <- binned_master %>%
+    dplyr::select(bin, C_A, C_G, C_T, T_A, T_C, T_G) %>%
+    dplyr::filter(bin >= binStart & bin <= binEnd)
+
+  binned_master$sub_bin <- rep(1:nrow(binned_master), each = 1)
+  binned_master <- binned_master %>%
+    tidyr::pivot_longer(cols = c(C_A, C_G, C_T, T_A, T_C, T_G), names_to = "types", values_to = "type_counts")
+
+  bin_breaks <- c(1)
+  for (i in 1:(nrow(binned_master)-1)) {
+    if (binned_master$bin[i+1] > binned_master$bin[i]) {
+      bin_breaks <- c(bin_breaks, binned_master$sub_bin[i+1])
+    }
+  }
+
+  cosmic_colors <- c("skyblue", "black", "red", "lightgrey", "lightgreen", "lightpink")
+
+  ggplot2::ggplot(data = binned_master, ggplot2::aes(x = sub_bin, y = type_counts, fill = types)) +
+    ggplot2::geom_col(position='stack') +
+    ggplot2::scale_x_continuous(breaks = bin_breaks, labels = as.character(c(binStart:binEnd))) +
+    ggplot2::scale_fill_manual(values = cosmic_colors) +
+    ggplot2::labs(x = "Bin", y = "Mutation Count", fill = "Mutation Type", title = "Pooled Thyroid-AdenoCA Bin 1") +
+    ggplot2::theme_bw()
 }
